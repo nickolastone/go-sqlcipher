@@ -10,6 +10,7 @@
 // license that can be found in the LICENSE file.
 //
 
+//go:build cgo
 // +build cgo
 
 package sqlite3
@@ -1015,7 +1016,7 @@ func (d *SQLiteDriver) Open(dsn string) (driver.Conn, error) {
 	txlock := "BEGIN"
 
 	// PRAGMA's
-	encryptKey := ""
+	var pragmaMap = make(map[string]string)
 	autoVacuum := -1
 	busyTimeout := 5000
 	caseSensitiveLike := -1
@@ -1038,8 +1039,18 @@ func (d *SQLiteDriver) Open(dsn string) (driver.Conn, error) {
 		}
 
 		// _key
-		if val := params.Get("_key"); val != "" {
-			encryptKey = val
+
+		if val := params.Get("_pragma_key"); val != "" {
+			pragmaMap["key"] = val
+		}
+		if val := params.Get("_pragma_cipher_use_hmac"); val != "" {
+			pragmaMap["cipher_use_hmac"] = val
+		}
+		if val := params.Get("_pragma_cipher_page_size"); val != "" {
+			pragmaMap["cipher_page_size"] = val
+		}
+		if val := params.Get("_pragma_kdf_iter"); val != "" {
+			pragmaMap["kdf_iter"] = val
 		}
 
 		// Authentication
@@ -1399,10 +1410,12 @@ func (d *SQLiteDriver) Open(dsn string) (driver.Conn, error) {
 
 	// Encrypt Keys
 	// The key pragma should be always called first
-	if encryptKey != "" {
-		if err := exec(fmt.Sprintf(`PRAGMA key = "%s";`, encryptKey)); err != nil {
-			C.sqlite3_close_v2(db)
-			return nil, err
+	if len(pragmaMap) > 0 {
+		for mkey, mvalue := range pragmaMap {
+			if err := exec(fmt.Sprintf(`PRAGMA %s = "%s";`, mkey, mvalue)); err != nil {
+				C.sqlite3_close_v2(db)
+				return nil, err
+			}
 		}
 	}
 
